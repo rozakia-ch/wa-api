@@ -1,0 +1,30 @@
+{
+  "name": "wa-multiple-login",
+  "version": "1.0.0",
+  "description": "whatsapp-api",
+  "main": "index.js",
+  "scripts": {
+    "start": "nodemon index.js",
+    "start:dev": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "wa-api"
+  ],
+  "author": "justcode",
+  "license": "ISC",
+  "dependencies": {
+    "ejs": "^3.1.6",
+    "express": "^4.17.1",
+    "express-ejs-layouts": "^2.5.1",
+    "express-fileupload": "^1.2.1",
+    "express-validator": "^6.13.0",
+    "http": "^0.0.1-security",
+    "mime-types": "^2.1.33",
+    "nodemon": "^2.0.14",
+    "qrcode": "^1.3.2",
+    "randomstring": "^1.2.1",
+    "socket.io": "^4.3.1",
+    "whatsapp-web.js": "^1.14.1"
+  }
+}
