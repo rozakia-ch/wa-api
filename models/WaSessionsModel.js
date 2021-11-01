@@ -1,5 +1,21 @@
+const { Client, MessageMedia } = require('whatsapp-web.js');
 const fs = require('fs');
+const qrcode = require('qrcode');
+const path = require("path");
 const SESSIONS_FILE = './whatsapp-sessions.json';
+const sessions = [];
+const initialize = function (socket, io) {
+  const savedSessions = getSessionsFile();
+  if (savedSessions.length > 0) {
+    if (socket) {
+      socket.emit('init', savedSessions);
+    } else {
+      savedSessions.forEach(sess => {
+        createSession(sess.id, sess.description, io);
+      });
+    }
+  }
+}
 const createSessionsFileIfNotExists = function () {
   if (!fs.existsSync(SESSIONS_FILE)) {
     try {
@@ -22,14 +38,19 @@ const getSessionsFile = function () {
   return JSON.parse(fs.readFileSync(SESSIONS_FILE));
 }
 
-const createSession = function (id, description) {
+const createSession = function (id, description, io) {
   console.log('Creating session: ' + id);
-  const SESSION_FILE_PATH = `./whatsapp-session-${id}.json`;
+  // const SESSION_FILE_PATH = path.join(__dirname, `../whatsapp-session-${id}.json`);
+  // let sessionCfg;
+  // if (fs.existsSync(SESSION_FILE_PATH)) {
+  //   sessionCfg = require(SESSION_FILE_PATH);
+  // }
   let sessionCfg;
-  if (fs.existsSync(SESSION_FILE_PATH)) {
-    sessionCfg = require(SESSION_FILE_PATH);
+  const savedSessions = getSessionsFile();
+  const sessionIndex = savedSessions.findIndex(sess => sess.id == id);
+  if (savedSessions[sessionIndex]) {
+    sessionCfg = savedSessions[sessionIndex].session;
   }
-
   const client = new Client({
     restartOnAuthFail: true,
     puppeteer: {
@@ -49,7 +70,6 @@ const createSession = function (id, description) {
   });
 
   client.initialize();
-
   client.on('qr', (qr) => {
     console.log('QR RECEIVED', qr);
     qrcode.toDataURL(qr, (err, url) => {
@@ -61,9 +81,6 @@ const createSession = function (id, description) {
   client.on('ready', () => {
     io.emit('ready', { id: id });
     io.emit('message', { id: id, text: 'Whatsapp is ready!' });
-
-    const savedSessions = getSessionsFile();
-    const sessionIndex = savedSessions.findIndex(sess => sess.id == id);
     savedSessions[sessionIndex].ready = true;
     setSessionsFile(savedSessions);
   });
@@ -72,11 +89,8 @@ const createSession = function (id, description) {
     io.emit('authenticated', { id: id });
     io.emit('message', { id: id, text: 'Whatsapp is authenticated!' });
     sessionCfg = session;
-    fs.writeFile(SESSION_FILE_PATH, JSON.stringify(session), function (err) {
-      if (err) {
-        console.error(err);
-      }
-    });
+    savedSessions[sessionIndex].session = session;
+    setSessionsFile(savedSessions);
   });
 
   client.on('auth_failure', function (session) {
@@ -85,19 +99,12 @@ const createSession = function (id, description) {
 
   client.on('disconnected', (reason) => {
     io.emit('message', { id: id, text: 'Whatsapp is disconnected!' });
-    fs.unlinkSync(SESSION_FILE_PATH, function (err) {
-      if (err) return console.log(err);
-      console.log('Session file deleted!');
-    });
+    // Menghapus pada file sessions
+    savedSessions[sessionIndex].ready = false;
+    savedSessions[sessionIndex].session = null;
+    setSessionsFile(savedSessions);
     client.destroy();
     client.initialize();
-
-    // Menghapus pada file sessions
-    const savedSessions = getSessionsFile();
-    const sessionIndex = savedSessions.findIndex(sess => sess.id == id);
-    savedSessions.splice(sessionIndex, 1);
-    setSessionsFile(savedSessions);
-
     io.emit('remove-session', id);
   });
 
@@ -109,21 +116,23 @@ const createSession = function (id, description) {
   });
 
   // Menambahkan session ke file
-  const savedSessions = getSessionsFile();
-  const sessionIndex = savedSessions.findIndex(sess => sess.id == id);
-
   if (sessionIndex == -1) {
     savedSessions.push({
       id: id,
       description: description,
       ready: false,
+      session: null
     });
     setSessionsFile(savedSessions);
   }
 }
+
+
 module.exports = {
+  sessions,
+  initialize,
   createSessionsFileIfNotExists,
   setSessionsFile,
   getSessionsFile,
-  createSession,
+  createSession
 }

@@ -6,6 +6,6 @@ const { phoneNumberFormatter } = require("../helpers/formatter");
 const router = express.Router();
 router.get('/', controller.index);
 // Send message
-router.post('/send-message-route', controller.sendMessage);
+router.post('/send-message', controller.sendMessage);
 // export default router
 module.exports = router;

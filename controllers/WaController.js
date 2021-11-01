@@ -1,3 +1,5 @@
+const { sessions } = require("../models/WaSessionsModel");
+const { phoneNumberFormatter } = require('../helpers/formatter');
 module.exports = {
   index: (req, res) => {
     var locals = {
