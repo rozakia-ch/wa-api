@@ -3,10 +3,9 @@ const { phoneNumberFormatter } = require('../helpers/formatter');
 
 module.exports = {
   sendMessage: (req, res) => {
-    const sender = req.body.sender;
+    const sender = req.headers['api-key'];
     const number = phoneNumberFormatter(req.body.number);
     const message = req.body.message;
-
     const client = sessions.find(sess => sess.id == sender).client;
 
     client.sendMessage(number, message).then(response => {
