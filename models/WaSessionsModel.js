@@ -1,28 +1,17 @@
 const { Client, MessageMedia } = require('whatsapp-web.js');
+const path = require('path');
 const fs = require('fs');
 const qrcode = require('qrcode');
-const path = require("path");
-const SESSIONS_FILE = './whatsapp-sessions.json';
+const SESSIONS_FILE = path.resolve(__dirname, '../whatsapp-sessions.json');
 const sessions = [];
-const initialize = function (socket, io) {
-  const savedSessions = getSessionsFile();
-  if (savedSessions.length > 0) {
-    if (socket) {
-      socket.emit('init', savedSessions);
-    } else {
-      savedSessions.forEach(sess => {
-        createSession(sess.id, sess.description, io);
-      });
-    }
-  }
-}
+
 const createSessionsFileIfNotExists = function () {
   if (!fs.existsSync(SESSIONS_FILE)) {
     try {
       fs.writeFileSync(SESSIONS_FILE, JSON.stringify([]));
       console.log('Sessions file created successfully.');
     } catch (err) {
-      console.log('Failed to create sessions file: ', err);
+      console.error('Failed to create sessions file: ', err);
     }
   }
 }
@@ -31,26 +20,37 @@ const setSessionsFile = function (sessions) {
     if (err) {
       console.log(err);
     }
+    const io = require('../helpers/socket').get();
+    io.emit("data-api-key", getSessionsFile());
+    return true;
   });
+
 }
 
 const getSessionsFile = function () {
   return JSON.parse(fs.readFileSync(SESSIONS_FILE));
 }
 
-const createSession = function (id, description, io) {
-  console.log('Creating session: ' + id);
-  // const SESSION_FILE_PATH = path.join(__dirname, `../whatsapp-session-${id}.json`);
-  // let sessionCfg;
-  // if (fs.existsSync(SESSION_FILE_PATH)) {
-  //   sessionCfg = require(SESSION_FILE_PATH);
-  // }
-  let sessionCfg;
+const removeSession = function (id) {
+  // Menghapus pada file sessions
   const savedSessions = getSessionsFile();
   const sessionIndex = savedSessions.findIndex(sess => sess.id == id);
-  if (savedSessions[sessionIndex]) {
-    sessionCfg = savedSessions[sessionIndex].session;
+  savedSessions.splice(sessionIndex, 1);
+  setSessionsFile(savedSessions);
+}
+const createSession = function (id, description, io) {
+  console.log('Creating session: ' + id);
+  const SESSION_FILE_PATH = path.resolve(__dirname, `../whatsapp-session-${id}.json`);
+  let sessionCfg;
+  if (fs.existsSync(SESSION_FILE_PATH)) {
+    try {
+      sessionCfg = require(SESSION_FILE_PATH);
+    } catch (error) {
+      console.error("file not found");
+    }
+
   }
+
   const client = new Client({
     restartOnAuthFail: true,
     puppeteer: {
@@ -70,8 +70,9 @@ const createSession = function (id, description, io) {
   });
 
   client.initialize();
+
   client.on('qr', (qr) => {
-    console.log('QR RECEIVED', qr);
+    // console.log('QR RECEIVED', qr);
     qrcode.toDataURL(qr, (err, url) => {
       io.emit('qr', { id: id, src: url });
       io.emit('message', { id: id, text: 'QR Code received, scan please!' });
@@ -81,6 +82,8 @@ const createSession = function (id, description, io) {
   client.on('ready', () => {
     io.emit('ready', { id: id });
     io.emit('message', { id: id, text: 'Whatsapp is ready!' });
+    const savedSessions = getSessionsFile();
+    const sessionIndex = savedSessions.findIndex(sess => sess.id == id);
     savedSessions[sessionIndex].ready = true;
     setSessionsFile(savedSessions);
   });
@@ -89,8 +92,11 @@ const createSession = function (id, description, io) {
     io.emit('authenticated', { id: id });
     io.emit('message', { id: id, text: 'Whatsapp is authenticated!' });
     sessionCfg = session;
-    savedSessions[sessionIndex].session = session;
-    setSessionsFile(savedSessions);
+    fs.writeFile(SESSION_FILE_PATH, JSON.stringify(session), function (err) {
+      if (err) {
+        console.error(err);
+      }
+    });
   });
 
   client.on('auth_failure', function (session) {
@@ -99,12 +105,19 @@ const createSession = function (id, description, io) {
 
   client.on('disconnected', (reason) => {
     io.emit('message', { id: id, text: 'Whatsapp is disconnected!' });
-    // Menghapus pada file sessions
-    savedSessions[sessionIndex].ready = false;
-    savedSessions[sessionIndex].session = null;
-    setSessionsFile(savedSessions);
+    fs.unlinkSync(SESSION_FILE_PATH, function (err) {
+      if (err) return console.log(err);
+      console.log('Session file deleted!');
+    });
+
     client.destroy();
     client.initialize();
+    // Menghapus pada file sessions
+    const savedSessions = getSessionsFile();
+    const sessionIndex = savedSessions.findIndex(sess => sess.id == id);
+    savedSessions[sessionIndex].ready = false;
+    // savedSessions.splice(sessionIndex, 1);
+    setSessionsFile(savedSessions);
     io.emit('remove-session', id);
   });
 
@@ -116,23 +129,24 @@ const createSession = function (id, description, io) {
   });
 
   // Menambahkan session ke file
+  const savedSessions = getSessionsFile();
+  const sessionIndex = savedSessions.findIndex(sess => sess.id == id);
+
   if (sessionIndex == -1) {
     savedSessions.push({
       id: id,
       description: description,
       ready: false,
-      session: null
     });
     setSessionsFile(savedSessions);
   }
 }
 
-
 module.exports = {
   sessions,
-  initialize,
   createSessionsFileIfNotExists,
   setSessionsFile,
   getSessionsFile,
+  removeSession,
   createSession
 }
